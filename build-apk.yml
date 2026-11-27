@@ -1,0 +1,60 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Extract and build APK
+        run: |
+          mkdir app
+          ZIP=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ZIP archive not found"
+            exit 1
+          fi
+          unzip -q "$ZIP" -d app
+          PACKAGE=$(find app -name package.json -print -quit)
+          if [ -z "$PACKAGE" ]; then
+            echo "package.json not found"
+            exit 1
+          fi
+          APP_DIR=$(dirname "$PACKAGE")
+          cd "$APP_DIR"
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npm run build
+          echo '{"appId":"com.telegram.platform","appName":"Телеграм 2","webDir":"dist"}' > capacitor.config.json
+          npx cap add android
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-platform-apk
+          path: app/**/android/app/build/outputs/apk/debug/app-debug.apk
